@@ -1,12 +1,14 @@
 import tensorflow as tf
 import numpy as np
 import pandas as pd
+from cffi.backend_ctypes import xrange
+from sklearn.model_selection import train_test_split
 
 
 class Day:
 
     def __init__(self, nb_family, date, activity1, place1, nb_ppl_now1, activity2, place2, nb_ppl_now2, activity3,
-                 place3, nb_ppl_now3, activity4, place4, nb_ppl_now4, activity5, place5, nb_ppl_npw5):
+                 place3, nb_ppl_now3, activity4, place4, nb_ppl_now4, activity5, place5, nb_ppl_npw5, target):
         self.nb_family = nb_family
         self.date = date
         self.activity1 = activity1
@@ -24,6 +26,7 @@ class Day:
         self.activity5 = activity5
         self.place5 = place5
         self.nb_ppl_npw5 = nb_ppl_npw5
+        self.target = target
 
 
 listdays = []
@@ -33,13 +36,6 @@ def loaddata():
     dataframe = pd.read_csv("/home/benarousfarouk/Desktop/IA/implementation/AnomalyDetectionIOT/data.csv")
 
     dataframe = dataframe.drop(columns='Horodateur')
-
-    inputX = dataframe.loc[:,
-             ['nb_family', 'date', 'activity1', 'place1', 'nb_ppl_now1', 'activity2', 'place2', 'nb_ppl_now2',
-              'activity3', 'place3', 'nb_ppl_now3', 'activity4', 'place4', 'nb_ppl_now4', 'activity5', 'place5',
-              'nb_ppl_npw5']].values
-
-    inputY = dataframe.loc[:, ["Target"]].values
 
     for i, j in dataframe.iterrows():
         a1 = "0"
@@ -152,7 +148,7 @@ def loaddata():
             a5 = "6"
         elif j[14] == "travailler":
             a5 = "7"
-        else :
+        else:
             a5 = "8"
         ######################################
 
@@ -233,7 +229,7 @@ def loaddata():
         ################################
 
         day = Day(j[0], j[1], a1, p1, j[4], a2, p2, j[7], a3, p3, j[10], a4, p4, j[13], a5, p5,
-                  j[16])
+                  j[16], j[17])
         listdays.append(day)
 
     df = pd.DataFrame([t.__dict__ for t in listdays])
@@ -244,4 +240,102 @@ def loaddata():
 if __name__ == '__main__':
     dataframe = loaddata()
     print(dataframe)
+    inputX = dataframe.loc[:,
+             ['nb_family', 'activity1', 'place1', 'nb_ppl_now1', 'activity2', 'place2', 'nb_ppl_now2',
+              'activity3', 'place3', 'nb_ppl_now3', 'activity4', 'place4', 'nb_ppl_now4', 'activity5', 'place5',
+              'nb_ppl_npw5']].values
 
+    inputY = dataframe.loc[:, ["target"]].values
+
+    X_train, X_test, y_train, y_test = train_test_split(inputX, inputY, test_size=0.2,
+                                                        random_state=42)  # splitting data
+
+    LOGDIR = "/tmp/mnist_tutorial/"
+
+    # Parameters
+    n_input = 16
+    n_hidden1 = 7
+    n_output = 1
+    learning_rate = 0.01
+    training_epochs = 1000000
+    display_step = 10000
+    BATCH_SIZE = 100
+    data_size = dataframe.shape[0]
+    train_size = X_train.shape[0]
+    test_size = X_test.shape[0]
+
+    tf.reset_default_graph()
+    sess = tf.Session()
+
+    X = tf.placeholder(tf.float32, name="X")
+    tf.summary.histogram("inputs ", X)
+
+    Y = tf.placeholder(tf.float32, name="output")
+    tf.summary.histogram("outputs ", Y)
+
+    with tf.name_scope("Hidden_Layer_1"):
+        W1 = tf.Variable(tf.random_normal([n_input, n_hidden1]), name="W1")
+        tf.summary.histogram("Weights 1", W1)
+
+        b1 = tf.Variable(tf.random_normal([n_hidden1]), name="B1")
+        tf.summary.histogram("Biases 1", b1)
+
+        L1 = tf.nn.sigmoid(tf.matmul(X, W1) + b1)
+        tf.summary.histogram("Activation", L1)
+
+    with tf.name_scope("OutputLayer"):
+        W2 = tf.Variable(tf.random_normal([n_hidden1, n_output]), name="W3")
+        tf.summary.histogram("Weights 3", W2)
+
+        b2 = tf.Variable(tf.random_normal([n_output]), name="B2")
+        tf.summary.histogram("Biases 2", b2)
+
+        hy = tf.nn.sigmoid(tf.matmul(L1, W2) + b2)
+        tf.summary.histogram("Output", hy)
+
+    with tf.name_scope("Cost"):
+        # tf.reduce_mean(-Y * tf.log(hy) - (1 - Y) * tf.log(1 - hy))
+        # tf.reduce_sum(tf.pow(Y_- hy, 2)) / (2 * train_size)
+        # tf.sqrt(tf.reduce_mean(tf.squared_difference(Y, hy)))
+        # tf.sqrt(tf.losses.mean_squared_error(hy, Y))
+        cost = tf.sqrt(tf.losses.mean_squared_error(hy, Y))
+        tf.summary.histogram("Cost ", cost)
+    with tf.name_scope("Train"):
+        optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
+        tf.summary.histogram("Optimazer ", optimizer.values())
+
+    with tf.name_scope("accuracy"):
+        answer = tf.equal(tf.floor(hy + 0.1), Y)
+        accuracy = tf.reduce_mean(tf.cast(answer, "float32"))
+        tf.summary.scalar("accuracy", accuracy)
+
+    summ = tf.summary.merge_all()
+
+    # Initialize variabls and tensorflow session
+    sess.run(tf.global_variables_initializer())
+    writer = tf.summary.FileWriter(LOGDIR)
+    writer.add_graph(sess.graph)
+
+    # lets Do  Our real traing
+
+    saver = tf.train.Saver()
+    with sess:
+        # saver.restore(sess,"/home/benarousfarouk/Desktop/SSI/Anomaly-Detection-InLogFiles/Models/Demo2/model.ckpt")
+        for i in xrange(training_epochs):
+
+            sess.run(optimizer, feed_dict={X: X_train, Y: y_train})
+
+            if (i) % display_step == 0:
+                print("w1 ", sess.run(W1), "\n  W2= ", sess.run(W2), "\n b1=", sess.run(b1), '\n', '\n')
+                cc = sess.run(cost, feed_dict={X: X_train, Y: y_train})
+                print("Training step:", "cost=", "{:.35f}".format(cc))
+                save_path = saver.save(sess, "/home/benarousfarouk/Desktop/IA/implementation/AnomalyDetectionIOT"
+                                             "/models/model.ckpt")
+
+        print("Training cost=", cc, "\n W1 = \n", sess.run(W1), "\n W2= \n", "\n b1=", sess.run(b1), '\n', '\n')
+        answer = tf.equal(tf.floor(hy + 0.1), Y)
+        accuracy = tf.reduce_mean(tf.cast(answer, "float32"))
+        print("Accuracy: ", accuracy.eval({X: X_test, Y: y_test}, session=sess) * 100, "%")
+        print("final Coast = ", cc)
+        print("Parameters  :", "\n learning rate  = ", learning_rate, "\n epoches = ", training_epochs,
+              " \n hidden layers  = ", n_hidden1, "\n coast function \n optimazer Adam ")
