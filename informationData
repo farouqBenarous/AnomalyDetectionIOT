@@ -1,0 +1,20 @@
+Activity :
+manger 0
+cuisinier 1
+regarder la télévision 2
+étudier 3
+dormir 4
+prendre une douche 5
+faire du sport 6
+travailler 7
+other 8
+
+Place  :
+salon 0
+cuisine 1
+chambre à coucher 2
+bureau 3
+salle de bain 4
+à l'extérieur 5
+other  6
+
